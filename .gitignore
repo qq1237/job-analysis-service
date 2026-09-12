@@ -1,0 +1,31 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE settings
+.idea/
+.vscode/
+
+# Packaging and coverage output
+*.egg-info/
+build/
+dist/
+.coverage
+htmlcov/
+
+# Local course exercises kept outside the V1 repository
+/day*.py
+/day2_模块拆解/
+/main.py
