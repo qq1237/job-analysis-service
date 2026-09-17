@@ -37,3 +37,12 @@ class Chunk(BaseModel):
     metadata: dict[str, str] = Field(
         default_factory=dict,
     )
+
+class EmbeddedChunk(BaseModel):
+    model_config = ConfigDict(
+        strict=True,
+        extra="forbid",
+    )
+
+    chunk: Chunk
+    vector: list[float] = Field(min_length=1)

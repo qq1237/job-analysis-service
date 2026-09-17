@@ -13,3 +13,5 @@ class JobAnalysis(BaseModel):
     matched_skills: list[str]
     missing_skills: list[str]
     summary: str = Field(min_length=1)
+
+
