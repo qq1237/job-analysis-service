@@ -46,3 +46,13 @@ class EmbeddedChunk(BaseModel):
 
     chunk: Chunk
     vector: list[float] = Field(min_length=1)
+
+
+class SearchResult(BaseModel):
+    model_config = ConfigDict(
+        strict=True,
+        extra="forbid",
+    )
+
+    chunk: Chunk
+    score: float
