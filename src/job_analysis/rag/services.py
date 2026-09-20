@@ -1,7 +1,16 @@
-"""Application services for RAG indexing and retrieval."""
+"""Application services for RAG indexing, retrieval, and answering."""
 
+from job_analysis.llm.models import ChatRequest
+from job_analysis.llm.protocols import ChatModelClient
+
+from .context import build_context
 from .embedding import embed_chunks
-from .models import Document, SearchResult
+from .models import (
+    Document,
+    RAGAnswer,
+    SearchResult,
+)
+from .prompts import build_rag_messages
 from .protocols import EmbeddingClient, VectorStore
 from .splitter import split_document
 
@@ -38,6 +47,7 @@ class DocumentIndexer:
 
         return len(embedded_chunks)
 
+
 class Retriever:
     def __init__(
         self,
@@ -71,4 +81,86 @@ class Retriever:
         return await self._vector_store.search(
             query_vector=query_vector,
             top_k=top_k,
+        )
+
+'''
+question
+→ Retriever
+→ list[SearchResult]
+→ build_context
+→ build_rag_messages
+→ ChatRequest
+→ ChatModelClient.generate
+→ model_text
+→ RAGAnswer(answer, sources)'''
+class RAGAnswerService:
+    def __init__(
+        self,
+        retriever: Retriever,
+        chat_model_client: ChatModelClient,
+        top_k: int,
+        max_output_tokens: int,
+    ) -> None:
+        if top_k <= 0:
+            raise ValueError("top_k must be greater than 0")
+
+        if not 1 <= max_output_tokens <= 4096:
+            raise ValueError(
+                "max_output_tokens must be between 1 and 4096"
+            )
+
+        self._retriever = retriever
+        self._chat_model_client = chat_model_client
+        self._top_k = top_k
+        self._max_output_tokens = max_output_tokens
+
+    async def answer(
+        self,
+        question: str,
+    ) -> RAGAnswer:
+        cleaned_question = question.strip()
+
+        search_results = await self._retriever.retrieve(
+            question=cleaned_question,
+            top_k=self._top_k,
+        )
+
+        if not search_results:
+            return RAGAnswer(
+                answer="根据现有知识库无法回答该问题。",
+                sources=[],
+            )
+
+        context = build_context(search_results)
+        messages = build_rag_messages(
+            question=cleaned_question,
+            context=context,
+        )
+
+        request = ChatRequest(
+            messages=messages,
+            response_format="text",
+            max_output_tokens=self._max_output_tokens,
+        )
+
+        model_text = await self._chat_model_client.generate(
+            request
+        )
+
+        sources: list[str] = []
+        seen_sources: set[str] = set()
+
+        for result in search_results:
+            source = (
+                result.chunk.metadata.get("source")
+                or result.chunk.document_id
+            )
+
+            if source not in seen_sources:
+                seen_sources.add(source)
+                sources.append(source)
+
+        return RAGAnswer(
+            answer=model_text,
+            sources=sources,
         )

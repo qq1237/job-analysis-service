@@ -56,3 +56,14 @@ class SearchResult(BaseModel):
 
     chunk: Chunk
     score: float
+class RAGAnswer(BaseModel):
+    model_config = ConfigDict(
+        strict=True,
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    answer: NonBlankText
+    sources: list[NonBlankText] = Field(
+        default_factory=list,
+    )
