@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from job_analysis.exceptions import LLMResponseError
+from job_analysis.exceptions import EmbeddingResponseError, LLMResponseError
 
 from .api_models import (
     IndexDocumentRequest,
@@ -55,7 +55,13 @@ async def index_document(
         metadata=payload.metadata.copy(),
     )
 
-    indexed_chunk_count = await indexer.index(document)
+    try:
+        indexed_chunk_count = await indexer.index(document)
+    except EmbeddingResponseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="向量服务返回了无法使用的结果",
+        ) from exc
 
     return IndexDocumentResponse(
         document_id=document.document_id,
@@ -73,6 +79,11 @@ async def answer_question(
 ) -> RAGAnswer:
     try:
         return await service.answer(payload.question)
+    except EmbeddingResponseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="向量服务返回了无法使用的结果",
+        ) from exc
     except LLMResponseError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

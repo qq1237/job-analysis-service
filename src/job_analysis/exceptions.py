@@ -8,3 +8,9 @@ class JobAnalysisParseError(RuntimeError):
     """模型输出无法解析为岗位分析结果。"""
 
     pass
+
+
+class EmbeddingResponseError(RuntimeError):
+    """Embedding服务返回了无法使用的结果。"""
+
+    pass
