@@ -4,24 +4,26 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from openai import AsyncOpenAI
+from qdrant_client import AsyncQdrantClient
 
 from job_analysis.api import router as job_router
 from job_analysis.config import (
     load_embedding_config,
     load_kimi_config,
+    load_vector_store_config,
 )
 from job_analysis.llm.kimi import KimiLLMClient
 from job_analysis.rag.api import router as rag_router
 from job_analysis.rag.openai_embedding import (
     OpenAICompatibleEmbeddingClient,
 )
+from job_analysis.rag.qdrant_vector_store import (
+    QdrantVectorStore,
+)
 from job_analysis.rag.services import (
     DocumentIndexer,
     RAGAnswerService,
     Retriever,
-)
-from job_analysis.rag.vector_store import (
-    InMemoryVectorStore,
 )
 from job_analysis.service import JobAnalysisService
 
@@ -34,10 +36,11 @@ RAG_MAX_OUTPUT_TOKENS = 512
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """创建并关闭应用共享资源。"""
+    """创建、初始化并关闭应用共享资源。"""
 
     kimi_config = load_kimi_config()
     embedding_config = load_embedding_config()
+    vector_store_config = load_vector_store_config()
 
     kimi_sdk_client = AsyncOpenAI(
         api_key=kimi_config.api_key,
@@ -47,52 +50,67 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         api_key=embedding_config.api_key,
         base_url=embedding_config.base_url,
     )
-
-    llm_client = KimiLLMClient(
-        sdk_client=kimi_sdk_client,
-        model=kimi_config.model,
+    qdrant_client = AsyncQdrantClient(
+        path=vector_store_config.path,
     )
-    embedding_client = OpenAICompatibleEmbeddingClient(
-        sdk_client=embedding_sdk_client,
-        model=embedding_config.model,
-        dimensions=embedding_config.dimensions,
-        batch_size=embedding_config.batch_size,
-    )
-
-    vector_store = InMemoryVectorStore()
-
-    job_analysis_service = JobAnalysisService(
-        llm_client=llm_client,
-    )
-    document_indexer = DocumentIndexer(
-        embedding_client=embedding_client,
-        vector_store=vector_store,
-        chunk_size=RAG_CHUNK_SIZE,
-        chunk_overlap=RAG_CHUNK_OVERLAP,
-    )
-    retriever = Retriever(
-        embedding_client=embedding_client,
-        vector_store=vector_store,
-    )
-    rag_answer_service = RAGAnswerService(
-        retriever=retriever,
-        chat_model_client=llm_client,
-        top_k=RAG_TOP_K,
-        max_output_tokens=RAG_MAX_OUTPUT_TOKENS,
-    )
-
-    app.state.job_analysis_service = (
-        job_analysis_service
-    )
-    app.state.document_indexer = document_indexer
-    app.state.rag_answer_service = rag_answer_service
 
     try:
+        llm_client = KimiLLMClient(
+            sdk_client=kimi_sdk_client,
+            model=kimi_config.model,
+        )
+        embedding_client = (
+            OpenAICompatibleEmbeddingClient(
+                sdk_client=embedding_sdk_client,
+                model=embedding_config.model,
+                dimensions=embedding_config.dimensions,
+                batch_size=embedding_config.batch_size,
+            )
+        )
+
+        vector_store = QdrantVectorStore(
+            client=qdrant_client,
+            collection_name=(
+                vector_store_config.collection_name
+            ),
+            vector_size=embedding_config.dimensions,
+        )
+        await vector_store.initialize()
+
+        job_analysis_service = JobAnalysisService(
+            llm_client=llm_client,
+        )
+        document_indexer = DocumentIndexer(
+            embedding_client=embedding_client,
+            vector_store=vector_store,
+            chunk_size=RAG_CHUNK_SIZE,
+            chunk_overlap=RAG_CHUNK_OVERLAP,
+        )
+        retriever = Retriever(
+            embedding_client=embedding_client,
+            vector_store=vector_store,
+        )
+        rag_answer_service = RAGAnswerService(
+            retriever=retriever,
+            chat_model_client=llm_client,
+            top_k=RAG_TOP_K,
+            max_output_tokens=RAG_MAX_OUTPUT_TOKENS,
+        )
+
+        app.state.job_analysis_service = (
+            job_analysis_service
+        )
+        app.state.document_indexer = document_indexer
+        app.state.rag_answer_service = (
+            rag_answer_service
+        )
+
         yield
     finally:
         await asyncio.gather(
             kimi_sdk_client.close(),
             embedding_sdk_client.close(),
+            qdrant_client.close(),
         )
 
 

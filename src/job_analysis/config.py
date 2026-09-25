@@ -25,6 +25,14 @@ class EmbeddingConfig:
     batch_size: int = 10
 
 
+@dataclass
+class VectorStoreConfig:
+    """持久化向量库配置。"""
+
+    path: str = "./data/qdrant"
+    collection_name: str = "job_documents"
+
+
 def load_kimi_config() -> KimiConfig:
     """从环境变量加载Kimi配置并尽早验证密钥。"""
 
@@ -114,4 +122,32 @@ def load_embedding_config() -> EmbeddingConfig:
         model=model,
         dimensions=dimensions,
         batch_size=batch_size,
+    )
+
+
+def load_vector_store_config() -> VectorStoreConfig:
+    """从环境变量加载持久化向量库配置。"""
+
+    path = os.getenv(
+        "QDRANT_PATH",
+        "./data/qdrant",
+    ).strip()
+    collection_name = os.getenv(
+        "QDRANT_COLLECTION_NAME",
+        "job_documents",
+    ).strip()
+
+    if not path:
+        raise RuntimeError(
+            "QDRANT_PATH不能为空"
+        )
+
+    if not collection_name:
+        raise RuntimeError(
+            "QDRANT_COLLECTION_NAME不能为空"
+        )
+
+    return VectorStoreConfig(
+        path=path,
+        collection_name=collection_name,
     )

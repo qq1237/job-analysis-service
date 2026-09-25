@@ -29,3 +29,6 @@ htmlcov/
 /day*.py
 /day2_模块拆解/
 /main.py
+
+# Local vector database
+/data/qdrant/
